@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="section-head">
+  <h1>Клієнти</h1>
+  <div class="buttons">
+    <a class="button" href="/export/clients.xlsx">⬇ Експорт в Excel</a>
+    <a class="button" href="/export/cases.xlsx">⬇ Звернення в Excel</a>
+  </div>
+</div>
+<form class="filters" method="get">
+  <input name="q" value="{{ q }}" placeholder="Пошук за ПІБ, назвою або телефоном">
+  <button>Шукати</button>
+</form>
+<table class="list">
+  <thead><tr><th>ПІБ / назва</th><th>Телефон</th><th>Звернень</th><th>Джерело</th><th>Додано</th></tr></thead>
+  <tbody>
+  {% for c in clients %}
+    <tr onclick="location.href='/clients/{{ c.id }}'">
+      <td>{{ c.full_name }}{% if c.has_contract %} <span class="badge">договір</span>{% endif %}</td>
+      <td>{{ c.phone }}</td><td>{{ c.cases|length }}</td>
+      <td class="small">{{ {'bot': 'бот', 'import': 'імпорт', 'manual': 'вручну'}.get(c.source, c.source) }}</td>
+      <td class="small">{{ c.created_at|dt('%d.%m.%Y') }}</td>
+    </tr>
+  {% else %}<tr><td colspan="5" class="muted">Нікого не знайдено.</td></tr>{% endfor %}
+  </tbody>
+</table>
+
+{% if parties %}
+<details class="card">
+  <summary><h2 class="inline-h">Інші сторони / опоненти ({{ parties|length }})</h2></summary>
+  <table class="list compact">
+    <thead><tr><th>ПІБ / назва</th><th>Роль</th><th>Пов'язано з</th></tr></thead>
+    <tbody>{% for p in parties %}<tr><td>{{ p.name }}</td><td>{{ p.role }}</td>
+      <td>{% if p.case_id %}<a href="/cases/{{ p.case_id }}">звернення #{{ p.case_id }}</a>{% else %}{{ p.related_client_name }}{% endif %}</td></tr>{% endfor %}</tbody>
+  </table>
+</details>
+{% endif %}
+
+<div class="two-col">
+  <section class="card">
+    <h2>Імпорт з Excel</h2>
+    <p class="small">Завантажте <a href="/clients-template.xlsx">шаблон</a>, перенесіть у нього свою таблицю
+      (клієнтів і опонентів) і завантажте сюди. Дублікати пропускаються. Імпортовані клієнти беруть участь у перевірці конфліктів.</p>
+    <form method="post" action="/clients/import" enctype="multipart/form-data">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <input type="file" name="file" accept=".xlsx" required>
+      <button class="primary">Імпортувати</button>
+    </form>
+    <p class="small muted">Експортований файл містить персональні дані й коди клієнтів — зберігайте його лише в захищеному місці.</p>
+  </section>
+  <section class="card">
+    <h2>Додати вручну</h2>
+    <form method="post" action="/clients">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <label>ПІБ / назва <input name="full_name" required></label>
+      <label>Телефон <input name="phone"></label>
+      <label>РНОКПП / ЄДРПОУ <input name="tax_id" inputmode="numeric"></label>
+      <label>Роль <select name="role"><option value="client">Клієнт</option><option value="party">Опонент / інша сторона</option></select></label>
+      <label>Примітка <input name="note"></label>
+      <button>Додати</button>
+    </form>
+  </section>
+</div>
+{% endblock %}

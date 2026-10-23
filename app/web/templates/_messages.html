@@ -1,0 +1,9 @@
+{% for m in case.messages %}
+<div class="msg {{ m.author }} {{ m.direction }}">
+  <div class="meta">
+    {% if m.direction == 'note' %}🔒 Нотатка (клієнт не бачить){% elif m.author == 'client' %}Клієнт{% elif m.author == 'lawyer' %}Адвокат{% else %}Асистент{% endif %}
+    · {{ m.created_at|dt('%d.%m %H:%M') }}
+  </div>
+  <div class="text">{{ m.text }}</div>
+</div>
+{% else %}<p class="muted">Повідомлень ще немає.</p>{% endfor %}

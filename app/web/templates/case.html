@@ -1,0 +1,173 @@
+{% extends "base.html" %}
+{% block title %}#{{ case.id }} {{ case.title }}{% endblock %}
+{% block main_class %}wide{% endblock %}
+{% block content %}
+{% set card = case.card or {} %}
+<div class="case-head">
+  <div>
+    <h1>#{{ case.id }} · {{ case.title or ('Опитування триває' if case.status in ['new', 'verified', 'conflict_check', 'survey', 'documents'] else 'Нове звернення') }}</h1>
+    <div class="muted">
+      <a href="/clients/{{ case.client.id }}">{{ case.client.full_name or 'ПІБ ще не вказано' }}</a>
+      {% if case.client.phone %} · {{ case.client.phone }}{% endif %}
+      {% if case.client.telegram_username %} · @{{ case.client.telegram_username }}{% endif %}
+      · створено {{ case.created_at|dt }}
+    </div>
+    <div class="tags">
+      <span class="badge">{{ case.status_enum.label }}</span>
+      {% if case.category %}<span class="badge">{{ CATEGORIES.get(case.category, case.category) }}</span>{% endif %}
+      {% if case.is_urgent %}<span class="badge red">Терміново: {{ case.urgency_reason }}</span>{% endif %}
+      {% if case.is_complex %}<span class="badge">Складна</span>{% endif %}
+      <span class="badge {{ 'amber' if case.conflict_status == 'possible' else ('red' if case.conflict_status == 'conflict' else '') }}">{{ case.conflict_enum.label }}</span>
+      {% if is_overdue(case) %}<span class="badge red">Прострочено</span>{% endif %}
+    </div>
+  </div>
+  <div class="head-actions">
+    <form method="post" action="/cases/{{ case.id }}/due" class="inline">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <label class="small">Строк відповіді
+        <input type="date" name="due" value="{{ case.response_due.strftime('%Y-%m-%d') if case.response_due else '' }}">
+      </label>
+      <button>Змінити</button>
+    </form>
+    <form method="post" action="/cases/{{ case.id }}/status" class="inline">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      {% if case.status == 'in_review' %}<button name="status" value="preparing" class="primary">Взяти в роботу</button>{% endif %}
+      {% if case.status in ['closed', 'inactive'] %}<button name="status" value="in_review">Відкрити знову</button>{% endif %}
+      {% if case.status not in ['closed', 'declined'] %}<button name="status" value="closed" data-confirm="Закрити звернення?">Закрити</button>{% endif %}
+    </form>
+  </div>
+</div>
+
+{% if not bot_connected %}<div class="flash error">Telegram-бот не підключено (немає TELEGRAM_BOT_TOKEN) — повідомлення клієнту не надсилатимуться.</div>{% endif %}
+
+<div class="case-grid">
+<div class="col-left">
+
+  {% if case.conflict_status == 'possible' %}
+  <section class="card warn">
+    <h2>Можливий конфлікт інтересів</h2>
+    <p class="small">Клієнту повідомлено лише «заявка на розгляді». Перевірте збіги:</p>
+    <ul>
+      {% for m in case.conflict_matches %}
+      <li><b>{{ m.name }}</b> — {{ 'наш клієнт' if m.kind == 'client' else m.role }}
+        ({{ {'exact_name': 'точний збіг ПІБ', 'fuzzy_name': 'схожий ПІБ', 'phone': 'той самий телефон', 'tax_id': 'той самий код'}[m.reason] }}{% if m.reason == 'fuzzy_name' %}, {{ m.score }}%{% endif %})
+        {% if m.kind == 'client' %}<a href="/clients/{{ m.ref_id }}">відкрити</a>{% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+    {% if case.intake.opponent %}<p class="small">Друга сторона зі слів клієнта: <b>{{ case.intake.opponent }}</b></p>{% endif %}
+    <form method="post" action="/cases/{{ case.id }}/conflict" class="inline">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <button name="decision" value="clear" class="primary">Конфлікту немає — продовжити</button>
+      <button name="decision" value="decline" class="danger" data-confirm="Надіслати клієнту ввічливу відмову?">Відмовити</button>
+    </form>
+  </section>
+  {% endif %}
+
+  {% if case.intake.namesakes %}
+  <section class="card">
+    <h2>Однофамільці в базі</h2>
+    <ul>{% for n in case.intake.namesakes %}
+      <li>{{ n.name }} — {% if n.same_person is sameas true %}<b>та сама особа</b> (РНОКПП збігся){% elif n.same_person is sameas false %}інша особа{% else %}не перевірено (клієнт пропустив код){% endif %}</li>
+    {% endfor %}</ul>
+  </section>
+  {% endif %}
+
+  <section class="card" id="card">
+    <div class="section-head">
+      <h2>Картка справи</h2>
+      <form method="post" action="/cases/{{ case.id }}/card">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <button class="small">↻ Оновити картку</button>
+      </form>
+    </div>
+    {% if not card %}
+      <p class="muted">Картка з'явиться, коли клієнт завершить опитування.</p>
+    {% else %}
+      {% if not card.ai %}<p class="flash info small">Картку складено без ШІ — це впорядковані відповіді клієнта.</p>{% endif %}
+      <h3>Суть</h3><p class="pre">{{ card.summary }}</p>
+      {% if card.client_goal %}<h3>Чого хоче клієнт</h3><p>{{ card.client_goal }}</p>{% endif %}
+      {% if card.chronology %}<h3>Хронологія</h3>
+        <table class="list compact">{% for i in card.chronology %}<tr><td class="nowrap">{{ i.date }}</td><td>{{ i.event }}</td></tr>{% endfor %}</table>{% endif %}
+      {% if card.parties %}<h3>Сторони</h3><ul>{% for p in card.parties %}<li>{{ p.name }} — {{ p.role }}</li>{% endfor %}</ul>{% endif %}
+      {% if card.deadlines %}<h3>Строки</h3><ul>{% for d in card.deadlines %}<li class="{{ 'red-text' if d.urgent }}">{{ d.date }} — {{ d.description }}</li>{% endfor %}</ul>{% endif %}
+      {% if card.amounts %}<h3>Суми</h3><ul>{% for a in card.amounts %}<li>{{ a }}</li>{% endfor %}</ul>{% endif %}
+      {% if card.gaps %}<h3>Прогалини у фактах</h3><ul>{% for g in card.gaps %}<li>{{ g }}</li>{% endfor %}</ul>{% endif %}
+      {% if card.complexity_reason %}<p class="small muted">Складність: {{ 'складна' if card.complexity == 'complex' else 'проста' }} — {{ card.complexity_reason }}</p>{% endif %}
+    {% endif %}
+  </section>
+
+  {% if case.intake.answers %}
+  <details class="card">
+    <summary><h2 class="inline-h">Анкета клієнта</h2></summary>
+    <dl class="qa">{% for q, a in case.intake.answers.items() %}<dt>{{ q }}</dt><dd>{{ a }}</dd>{% endfor %}</dl>
+    {% if case.intake.extra %}<h3>Додатково</h3><ul>{% for e in case.intake.extra %}<li>{{ e }}</li>{% endfor %}</ul>{% endif %}
+  </details>
+  {% endif %}
+
+  <section class="card">
+    <h2>Документи ({{ case.documents|length }})</h2>
+    <ul class="docs">
+      {% for d in case.documents %}
+      <li><a href="/documents/{{ d.id }}" target="_blank" rel="noopener">{{ d.filename }}</a>
+        <span class="small muted">{{ (d.size / 1024)|round(0)|int }} КБ</span>
+        {% if d.readable is sameas false %}<span class="badge amber">погано читається: {{ d.check_note }}</span>{% endif %}
+      </li>
+      {% else %}<li class="muted">Немає</li>{% endfor %}
+    </ul>
+  </section>
+
+  {% if case.status in ['new', 'verified', 'conflict_check', 'survey', 'documents'] and not sent_drafts %}
+  <section class="card" id="draft">
+    <h2>Відповідь клієнту</h2>
+    <p class="muted">Клієнт ще проходить опитування. Письмову консультацію можна підготувати після його завершення;
+      для термінового зв'язку напишіть клієнту в чаті праворуч.</p>
+  </section>
+  {% else %}
+  <section class="card" id="draft">
+    <h2>Відповідь клієнту</h2>
+    <p class="small muted">Текст надсилається клієнту лише після натискання «Затвердити й надіслати». Підпис додається автоматично.</p>
+    <form method="post" action="/cases/{{ case.id }}/draft">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <textarea name="text" rows="12" placeholder="Письмова консультація…">{{ draft.text if draft else '' }}</textarea>
+      <div class="buttons">
+        <button name="action" value="save">Зберегти чернетку</button>
+        <button name="action" value="approve" class="primary" data-confirm="Затвердити й надіслати клієнту?">Затвердити й надіслати</button>
+      </div>
+    </form>
+    {% if sent_drafts %}
+      <h3>Надіслані консультації</h3>
+      {% for d in sent_drafts %}<details><summary>{{ d.sent_at|dt }}</summary><p class="pre">{{ d.text }}</p></details>{% endfor %}
+    {% endif %}
+  </section>
+  {% endif %}
+</div>
+
+<div class="col-right" id="chat">
+  <section class="card chat">
+    <div class="section-head">
+      <h2>Чат</h2>
+      <form method="post" action="/cases/{{ case.id }}/handoff">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        {% if case.handoff == 'lawyer' %}
+          <span class="badge">Веде адвокат</span> <button name="to" value="assistant" class="small">Повернути асистенту</button>
+        {% else %}
+          <span class="badge">Веде асистент</span> <button name="to" value="lawyer" class="small">Перехопити чат</button>
+        {% endif %}
+      </form>
+    </div>
+    <div class="messages" id="messages" data-poll="/cases/{{ case.id }}/messages">{% include "_messages.html" %}</div>
+    <form method="post" action="/cases/{{ case.id }}/reply" class="reply">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <textarea name="text" rows="3" placeholder="Написати клієнту (асистент замовкне)…" required></textarea>
+      <button class="primary">Надіслати</button>
+    </form>
+    <form method="post" action="/cases/{{ case.id }}/note" class="reply note">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <textarea name="text" rows="2" placeholder="Внутрішня нотатка (клієнт не бачить)…" required></textarea>
+      <button>Додати нотатку</button>
+    </form>
+  </section>
+</div>
+</div>
+{% endblock %}

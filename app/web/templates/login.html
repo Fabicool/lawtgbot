@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}Вхід — Платформа адвоката{% endblock %}
+{% block main_class %}narrow{% endblock %}
+{% block content %}
+<div class="card login">
+  <h1>Вхід</h1>
+  {% if error %}<div class="flash error">{{ error }}</div>{% endif %}
+  <form method="post" action="/login" autocomplete="off">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <label>Логін <input name="username" required autofocus></label>
+    <label>Пароль <input name="password" type="password" required></label>
+    <label>Код із застосунку 2FA <input name="code" inputmode="numeric" pattern="[0-9 ]{6,7}" required></label>
+    <button class="primary">Увійти</button>
+  </form>
+</div>
+{% endblock %}

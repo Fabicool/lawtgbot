@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Пропозиції відповідей</h1>
+{% if conflicts %}
+<h2>Потрібне рішення щодо конфлікту</h2>
+<table class="list">
+  <thead><tr><th>#</th><th>Клієнт</th><th>Збігів</th><th>Створено</th></tr></thead>
+  <tbody>{% for c in conflicts %}
+    <tr onclick="location.href='/cases/{{ c.id }}'"><td>{{ c.id }}</td><td>{{ c.client.full_name }}</td><td>{{ c.conflict_matches|length }}</td><td class="small">{{ c.created_at|dt }}</td></tr>
+  {% endfor %}</tbody>
+</table>
+{% endif %}
+<h2>Чекають на відповідь</h2>
+<table class="list">
+  <thead><tr><th>#</th><th>Справа</th><th>Клієнт</th><th>Категорія</th><th>Статус</th><th>Строк</th></tr></thead>
+  <tbody>
+  {% for c in cases %}
+    <tr class="{{ 'overdue' if is_overdue(c) }} {{ 'unread' if c.unread }}" onclick="location.href='/cases/{{ c.id }}#draft'">
+      <td>{{ c.id }}</td>
+      <td>{{ c.title }}{% if c.is_urgent %} <span class="badge red">Терміново</span>{% endif %}{% if c.is_complex %} <span class="badge">Складна</span>{% endif %}</td>
+      <td>{{ c.client.full_name }}</td>
+      <td>{{ CATEGORIES.get(c.category, '—') }}</td>
+      <td>{{ c.status_enum.label }}</td>
+      <td class="small">{{ c.response_due|dt('%d.%m.%Y') }}</td>
+    </tr>
+  {% else %}<tr><td colspan="6" class="muted">Немає звернень, що чекають на відповідь.</td></tr>{% endfor %}
+  </tbody>
+</table>
+{% endblock %}

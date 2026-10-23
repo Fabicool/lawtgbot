@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Чати</h1>
+<form class="filters" method="get">
+  <select name="channel"><option value="">Усі канали</option><option value="telegram" {{ 'selected' if channel == 'telegram' }}>Telegram</option></select>
+  <select name="status"><option value="">Усі статуси</option>
+    {% for value, label in STATUS_LABELS.items() %}<option value="{{ value }}" {{ 'selected' if status == value }}>{{ label }}</option>{% endfor %}
+  </select>
+  <button>Фільтр</button>
+</form>
+<table class="list">
+  <thead><tr><th>#</th><th>Клієнт</th><th>Тема</th><th>Статус</th><th>Хто веде</th><th>Останнє</th></tr></thead>
+  <tbody>
+  {% for case, last_at in rows %}
+    <tr class="{{ 'unread' if case.unread }}" onclick="location.href='/cases/{{ case.id }}#chat'">
+      <td>{{ case.id }}{% if case.unread %} <span class="dot"></span>{% endif %}</td>
+      <td>{{ case.client.full_name or ('@' ~ case.client.telegram_username) }}</td>
+      <td>{{ case.title or '—' }}{% if case.is_urgent %} <span class="badge red">Терміново</span>{% endif %}</td>
+      <td>{{ case.status_enum.label }}</td>
+      <td>{{ 'Адвокат' if case.handoff == 'lawyer' else 'Асистент' }}</td>
+      <td class="small">{{ last_at|dt }}</td>
+    </tr>
+  {% else %}<tr><td colspan="6" class="muted">Поки немає листування.</td></tr>{% endfor %}
+  </tbody>
+</table>
+{% endblock %}

@@ -1,0 +1,12 @@
+<a class="mini {{ 'urgent' if c.is_urgent }} {{ 'overdue' if is_overdue(c) }}" href="/cases/{{ c.id }}">
+  <div class="mini-top">
+    <span>#{{ c.id }}</span>
+    {% if c.unread %}<span class="dot" title="Нове"></span>{% endif %}
+    {% if c.is_urgent %}<span class="badge red">Терміново</span>{% endif %}
+    {% if c.conflict_status == 'possible' %}<span class="badge amber">Конфлікт?</span>{% endif %}
+    {% if c.handoff == 'lawyer' %}<span class="badge">Адвокат</span>{% endif %}
+  </div>
+  <div class="mini-title">{{ c.title or ('Опитування триває' if c.status in ['new', 'verified', 'conflict_check', 'survey', 'documents'] else 'Без назви') }}</div>
+  <div class="muted">{{ c.client.full_name or ('@' ~ c.client.telegram_username if c.client.telegram_username else 'Анонім') }}</div>
+  {% if c.response_due %}<div class="muted small">до {{ c.response_due|dt('%d.%m') }}</div>{% endif %}
+</a>

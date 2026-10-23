@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Налаштування</h1>
+<section class="card">
+  <h2>Стан підключень</h2>
+  <ul>
+    <li>ШІ (Claude): {% if ai_enabled %}<b>увімкнено</b>, модель {{ model }}{% else %}<b>вимкнено</b> — додайте ANTHROPIC_API_KEY у файл .env. Без ШІ бот працює за анкетою.{% endif %}</li>
+    <li>Email-сповіщення: {% if email_enabled %}<b>налаштовано</b>{% else %}<b>не налаштовано</b> — сповіщення лише на дашборді (див. SMTP_* у .env){% endif %}</li>
+  </ul>
+</section>
+<form method="post" action="/settings">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <section class="card">
+    <h2>Загальне</h2>
+    {% for key, label, kind in general %}
+      <label>{{ label }} <input name="{{ key }}" value="{{ values[key] }}" {% if kind == 'number' %}type="number" min="0"{% endif %}></label>
+    {% endfor %}
+  </section>
+  <section class="card">
+    <h2>Тексти повідомлень бота</h2>
+    <p class="small muted">Підстановки: {lawyer_name}, {lawyer_phone}, {privacy_url}; у деяких текстах — {name}, {days}, {documents}, {filename}, {note}.</p>
+    {% for key, label in template_labels.items() %}
+      <label>{{ label }} <textarea name="tpl.{{ key }}" rows="{{ 6 if values['tpl.' ~ key]|length > 200 else 3 }}">{{ values['tpl.' ~ key] }}</textarea></label>
+    {% endfor %}
+  </section>
+  <section class="card">
+    <h2>Анкети</h2>
+    <p class="small muted">Одне питання — один рядок.</p>
+    <label>Базові питання (для всіх) <textarea name="base_questions" rows="7">{{ values['base_questions'] }}</textarea></label>
+    {% for key, label in CATEGORIES.items() %}
+      <label>{{ label }}: додаткові питання <textarea name="questions.{{ key }}" rows="3">{{ values['questions.' ~ key] }}</textarea></label>
+    {% endfor %}
+  </section>
+  <section class="card">
+    <h2>Переліки документів</h2>
+    {% for key, label in CATEGORIES.items() %}
+      <label>{{ label }} <textarea name="documents.{{ key }}" rows="3">{{ values['documents.' ~ key] }}</textarea></label>
+    {% endfor %}
+  </section>
+  <div class="sticky-save"><button class="primary">Зберегти налаштування</button></div>
+</form>
+<details class="card">
+  <summary><h2 class="inline-h">Журнал дій (останні 50)</h2></summary>
+  <table class="list compact">
+    <thead><tr><th>Час</th><th>Хто</th><th>Дія</th><th>Об'єкт</th><th>Деталі</th></tr></thead>
+    <tbody>{% for e in log %}<tr><td class="small nowrap">{{ e.created_at|dt }}</td><td>{{ e.actor }}</td><td>{{ e.action }}</td>
+      <td>{{ e.object_type }}{% if e.object_id %} #{{ e.object_id }}{% endif %}</td><td class="small">{{ e.details }}</td></tr>{% endfor %}</tbody>
+  </table>
+</details>
+{% endblock %}

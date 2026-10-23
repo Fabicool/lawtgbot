@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block main_class %}wide{% endblock %}
+{% block content %}
+<div class="stats">
+  <div class="stat"><b>{{ stats.new_week }}</b><span>нових звернень за 7 днів</span></div>
+  <div class="stat"><b>{{ stats.consult_share if stats.consult_share is not none else '—' }}{% if stats.consult_share is not none %}%{% endif %}</b><span>дійшли до консультації (30 днів)</span></div>
+  <div class="stat"><b>{{ stats.avg_hours if stats.avg_hours is not none else '—' }}{% if stats.avg_hours is not none %} год{% endif %}</b><span>середній час до відповіді адвоката</span></div>
+  <div class="stat actions"><a class="button" href="/export/cases.xlsx">⬇ Звернення в Excel</a></div>
+</div>
+{% if urgent %}
+<section class="urgent-strip">
+  <h2>Термінові</h2>
+  <div class="row">{% for c in urgent %}{% include "_case_card_mini.html" %}{% endfor %}</div>
+</section>
+{% endif %}
+<div class="board">
+  {% for status, items in columns.items() %}
+  <section class="column">
+    <h3>{{ status.label }} <span class="count">{{ items|length }}</span></h3>
+    {% for c in items %}{% include "_case_card_mini.html" %}{% else %}<p class="muted small">порожньо</p>{% endfor %}
+  </section>
+  {% endfor %}
+</div>
+{% endblock %}

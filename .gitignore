@@ -1,0 +1,11 @@
+.venv/
+__pycache__/
+*.pyc
+.env
+data/
+*.db
+.pytest_cache/
+.ruff_cache/
+lawyer-2fa.png
+*.egg-info/
+build/

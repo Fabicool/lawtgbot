@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>{{ client.full_name }}</h1>
+<section class="card">
+  <dl class="qa">
+    <dt>Телефон</dt><dd>{{ client.phone or '—' }}</dd>
+    <dt>{{ 'ЄДРПОУ' if client.is_company else 'РНОКПП' }}</dt><dd>{{ tax_id or '—' }}</dd>
+    <dt>Telegram</dt><dd>{{ '@' ~ client.telegram_username if client.telegram_username else ('є' if client.telegram_id else '—') }}</dd>
+    <dt>Згода на обробку даних</dt><dd>{{ client.consent_at|dt if client.consent_at else '—' }}</dd>
+    <dt>Джерело</dt><dd>{{ {'bot': 'бот', 'import': 'імпорт з Excel', 'manual': 'додано вручну'}.get(client.source, client.source) }}</dd>
+    {% if client.note %}<dt>Примітка</dt><dd class="pre">{{ client.note }}</dd>{% endif %}
+  </dl>
+</section>
+<section class="card">
+  <h2>Звернення</h2>
+  <table class="list">
+    <thead><tr><th>#</th><th>Тема</th><th>Статус</th><th>Створено</th></tr></thead>
+    <tbody>{% for c in client.cases %}
+      <tr onclick="location.href='/cases/{{ c.id }}'"><td>{{ c.id }}</td><td>{{ c.title or '—' }}</td><td>{{ c.status_enum.label }}</td><td class="small">{{ c.created_at|dt }}</td></tr>
+    {% else %}<tr><td colspan="4" class="muted">Немає звернень.</td></tr>{% endfor %}</tbody>
+  </table>
+</section>
+{% if matches %}
+<section class="card warn">
+  <h2>Схожі записи в базі</h2>
+  <ul>{% for m in matches %}<li>{{ m.name }} — {{ 'клієнт' if m.kind == 'client' else m.role }} ({{ m.score }}%)
+    {% if m.kind == 'client' %}<a href="/clients/{{ m.ref_id }}">відкрити</a>{% endif %}</li>{% endfor %}</ul>
+</section>
+{% endif %}
+{% endblock %}

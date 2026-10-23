@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="uk">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Платформа адвоката{% endblock %}</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <meta name="robots" content="noindex">
+</head>
+<body>
+{% if request.session.get('lawyer_id') and not public %}
+<header class="topbar">
+  <a class="brand" href="/">⚖ Платформа</a>
+  <nav>
+    <a href="/" class="{{ 'active' if nav == 'dashboard' }}">Дашборд</a>
+    <a href="/chats" class="{{ 'active' if nav == 'chats' }}">Чати</a>
+    <a href="/proposals" class="{{ 'active' if nav == 'proposals' }}">Пропозиції</a>
+    <a href="/clients" class="{{ 'active' if nav == 'clients' }}">Клієнти</a>
+    <a href="/settings" class="{{ 'active' if nav == 'settings' }}">Налаштування</a>
+  </nav>
+  <form method="post" action="/logout" class="logout">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <button class="link">Вийти</button>
+  </form>
+</header>
+{% endif %}
+<main class="{% block main_class %}{% endblock %}">
+  {% for f in flashes %}<div class="flash {{ f.kind }}">{{ f.text }}</div>{% endfor %}
+  {% block content %}{% endblock %}
+</main>
+<script src="/static/app.js"></script>
+</body>
+</html>

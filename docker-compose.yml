@@ -1,0 +1,12 @@
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      WEB_HOST: 0.0.0.0
+    volumes:
+      - ./data:/app/data
+    # Платформа доступна лише з цього комп'ютера/сервера. Назовні — через HTTPS-проксі (див. README).
+    ports:
+      - "127.0.0.1:8000:8000"
