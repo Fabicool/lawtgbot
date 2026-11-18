@@ -68,7 +68,10 @@ class Case(Base):
     card: Mapped[dict] = mapped_column(JSON, default=dict)  # картка справи від Аналітика
     conflict_status: Mapped[str] = mapped_column(String(24), default=ConflictStatus.NOT_CHECKED)
     conflict_matches: Mapped[list] = mapped_column(JSON, default=list)
+    research: Mapped[dict] = mapped_column(JSON, default=dict)  # результат Дослідника
+    meeting_offer: Mapped[dict] = mapped_column(JSON, default=dict)  # запропоновані клієнту слоти
     response_due: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    due_warned_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     last_client_activity: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     unread: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
@@ -79,6 +82,8 @@ class Case(Base):
     messages: Mapped[list["Message"]] = relationship(back_populates="case", order_by="Message.id")
     documents: Mapped[list["Document"]] = relationship(back_populates="case", order_by="Document.id")
     drafts: Mapped[list["Draft"]] = relationship(back_populates="case", order_by="Draft.id.desc()")
+    sources: Mapped[list["Source"]] = relationship(back_populates="case", order_by="Source.id")
+    meetings: Mapped[list["Meeting"]] = relationship(back_populates="case", order_by="Meeting.starts_at")
 
     @property
     def status_enum(self) -> CaseStatus:
@@ -144,6 +149,7 @@ class Draft(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     case_id: Mapped[int] = mapped_column(ForeignKey("cases.id"), index=True)
     text: Mapped[str] = mapped_column(Text, default="")
+    author: Mapped[str] = mapped_column(String(16), default="lawyer")  # lawyer | researcher
     state: Mapped[str] = mapped_column(String(16), default="draft")  # draft | sent
     approved_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     sent_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
@@ -151,6 +157,55 @@ class Draft(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
 
     case: Mapped[Case] = relationship(back_populates="drafts")
+
+
+class Source(Base):
+    """Правове джерело, знайдене Дослідником. Перед надсиланням адвокат підтверджує кожне."""
+
+    __tablename__ = "sources"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    case_id: Mapped[int] = mapped_column(ForeignKey("cases.id"), index=True)
+    kind: Mapped[str] = mapped_column(String(24), default="law")  # law | court_decision | legal_position
+    title: Mapped[str] = mapped_column(Text, default="")
+    reference: Mapped[str] = mapped_column(
+        Text, default=""
+    )  # «ст. 40 КЗпП», «справа № …, постанова ВС від …»
+    url: Mapped[str] = mapped_column(Text, default="")
+    case_number: Mapped[str] = mapped_column(String(64), default="")
+    decision_date: Mapped[str] = mapped_column(String(32), default="")
+    relevance: Mapped[str] = mapped_column(Text, default="")
+    check_status: Mapped[str] = mapped_column(
+        String(16), default="pending"
+    )  # ok|not_found|unreachable|bad_domain
+    check_note: Mapped[str] = mapped_column(Text, default="")
+    checked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    confirmed: Mapped[bool] = mapped_column(Boolean, default=False)  # адвокат перевірив
+    excluded: Mapped[bool] = mapped_column(Boolean, default=False)  # адвокат прибрав
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+    case: Mapped[Case] = relationship(back_populates="sources")
+
+
+class Meeting(Base):
+    """Зустріч з клієнтом або закритий для запису час (kind="block"). Час — UTC."""
+
+    __tablename__ = "meetings"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    case_id: Mapped[int | None] = mapped_column(ForeignKey("cases.id"), nullable=True, index=True)
+    kind: Mapped[str] = mapped_column(String(16), default="meeting")  # meeting | block
+    format: Mapped[str] = mapped_column(String(16), default="office")  # office | online
+    starts_at: Mapped[datetime] = mapped_column(DateTime, index=True)
+    ends_at: Mapped[datetime] = mapped_column(DateTime)
+    status: Mapped[str] = mapped_column(String(16), default="scheduled")  # scheduled | cancelled | done
+    google_event_id: Mapped[str] = mapped_column(String(255), default="")
+    reminded_24: Mapped[bool] = mapped_column(Boolean, default=False)
+    reminded_2: Mapped[bool] = mapped_column(Boolean, default=False)
+    note: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+    case: Mapped[Case | None] = relationship(back_populates="meetings")
 
 
 class Setting(Base):

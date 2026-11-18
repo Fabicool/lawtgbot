@@ -27,6 +27,7 @@
       <label class="small">Строк відповіді
         <input type="date" name="due" value="{{ case.response_due.strftime('%Y-%m-%d') if case.response_due else '' }}">
       </label>
+      <label class="small"><input type="checkbox" name="notify_client" value="1" style="width:auto"> повідомити клієнта</label>
       <button>Змінити</button>
     </form>
     <form method="post" action="/cases/{{ case.id }}/status" class="inline">
@@ -124,12 +125,88 @@
       для термінового зв'язку напишіть клієнту в чаті праворуч.</p>
   </section>
   {% else %}
+  {% set res = research.get('result') or {} %}
+  <section class="card" id="research">
+    <div class="section-head">
+      <h2>Правовий дослідник</h2>
+      {% if research.get('state') != 'running' and ai_enabled and case.card %}
+      <form method="post" action="/cases/{{ case.id }}/research">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <button class="small">{{ '↻ Дослідити заново' if res else '▶ Запустити Дослідника' }}</button>
+      </form>
+      {% endif %}
+    </div>
+    {% if not ai_enabled %}
+      <p class="muted">Дослідник потребує ключа Claude API (ANTHROPIC_API_KEY у файлі .env).</p>
+    {% elif research.get('state') == 'running' %}
+      <p class="flash info" data-autoreload="15">⏳ Дослідник шукає законодавство і практику ВС (1–3 хв). Сторінка оновиться сама.</p>
+    {% elif research.get('state') == 'error' %}
+      <p class="flash error">{{ research.get('error') }}</p>
+    {% elif not res %}
+      <p class="muted">Дослідник ще не запускався.</p>
+    {% endif %}
+    {% if res %}
+      {% if res.legal_issues %}<h3>Правові питання</h3><ul>{% for i in res.legal_issues %}<li>{{ i }}</li>{% endfor %}</ul>{% endif %}
+      <h3>Записка для адвоката</h3><p class="pre">{{ res.analysis }}</p>
+      {% if res.missing_info %}<h3>Що уточнити в клієнта</h3><ul>{% for i in res.missing_info %}<li>{{ i }}</li>{% endfor %}</ul>{% endif %}
+      {% if res.recommend_meeting %}<p class="badge amber">Дослідник радить особисту зустріч</p>{% endif %}
+      {% if res.document_draft %}
+        <details><summary><b>Проєкт документа</b></summary><p class="pre">{{ res.document_draft }}</p></details>
+      {% endif %}
+      {% if research.get('comments') %}
+        <details><summary class="small">Ваші коментарі Досліднику ({{ research.comments|length }})</summary>
+          <ul class="small">{% for c in research.comments %}<li>{{ c.text }}</li>{% endfor %}</ul></details>
+      {% endif %}
+      {% if research.get('state') != 'running' %}
+      <form method="post" action="/cases/{{ case.id }}/research" class="reply">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <textarea name="comment" rows="2" placeholder="Повернути досліднику з коментарем: що виправити чи дослідити глибше…" required></textarea>
+        <button>Повернути</button>
+      </form>
+      {% endif %}
+    {% endif %}
+  </section>
+
   <section class="card" id="draft">
     <h2>Відповідь клієнту</h2>
-    <p class="small muted">Текст надсилається клієнту лише після натискання «Затвердити й надіслати». Підпис додається автоматично.</p>
+    <p class="small muted">Текст надсилається клієнту лише після натискання «Затвердити й надіслати». Підпис додається автоматично.
+      {% if draft and draft.author == 'researcher' %}<br><b>Чернетку підготував Дослідник — уважно перевірте її.</b>{% endif %}</p>
     <form method="post" action="/cases/{{ case.id }}/draft">
       <input type="hidden" name="csrf" value="{{ csrf }}">
-      <textarea name="text" rows="12" placeholder="Письмова консультація…">{{ draft.text if draft else '' }}</textarea>
+      {% if sources %}
+      <div id="sources">
+        <div class="section-head">
+          <h3>Джерела ({{ sources|length }}) — позначте кожне після перевірки</h3>
+          <button formaction="/cases/{{ case.id }}/sources/recheck" formnovalidate class="small">↻ Перевірити посилання</button>
+        </div>
+        <table class="list compact sources">
+          {% for s in sources %}
+          <tr>
+            <td><input type="checkbox" name="confirm_{{ s.id }}" {{ 'checked' if s.confirmed }} title="Я перевірив це джерело"></td>
+            <td>
+              <a href="{{ s.url }}" target="_blank" rel="noopener noreferrer">{{ s.reference or s.title }}</a>
+              <div class="small muted">{{ s.title }}</div>
+              {% if s.relevance %}<div class="small">{{ s.relevance }}</div>{% endif %}
+            </td>
+            <td class="nowrap">
+              {% set badge = {'ok': ('', '✓ відкривається'), 'opened': ('amber', 'перевірте зміст'), 'not_found': ('red', '✗ не знайдено'),
+                              'unreachable': ('amber', 'перевірте вручну'), 'bad_domain': ('red', '✗ не офіційне'), 'pending': ('', '…')}[s.check_status] %}
+              <span class="badge {{ badge[0] }}" title="{{ s.check_note }}">{{ badge[1] }}</span>
+            </td>
+            <td><button name="action" value="exclude:{{ s.id }}" class="small link" formnovalidate title="Прибрати джерело">✕</button></td>
+          </tr>
+          {% endfor %}
+        </table>
+        <p class="small muted">Наведіть на позначку, щоб побачити деталі перевірки. Сайти zakon.rada.gov.ua і reyestr.court.gov.ua
+          не відкриваються з-за кордону — якщо платформа працює не в Україні, перевірте їх вручну.</p>
+      </div>
+      {% endif %}
+      {% if excluded_sources %}
+        <details class="small"><summary>Прибрані джерела ({{ excluded_sources|length }})</summary>
+          {% for s in excluded_sources %}<div>{{ s.reference or s.title }} <button name="action" value="include:{{ s.id }}" class="small link" formnovalidate>повернути</button></div>{% endfor %}
+        </details>
+      {% endif %}
+      <textarea name="text" rows="14" placeholder="Письмова консультація…">{{ draft.text if draft else '' }}</textarea>
       <div class="buttons">
         <button name="action" value="save">Зберегти чернетку</button>
         <button name="action" value="approve" class="primary" data-confirm="Затвердити й надіслати клієнту?">Затвердити й надіслати</button>
@@ -139,6 +216,32 @@
       <h3>Надіслані консультації</h3>
       {% for d in sent_drafts %}<details><summary>{{ d.sent_at|dt }}</summary><p class="pre">{{ d.text }}</p></details>{% endfor %}
     {% endif %}
+  </section>
+
+  <section class="card" id="meeting">
+    <h2>Зустріч</h2>
+    {% for m in upcoming %}
+      <div class="meeting-row">
+        <b>{{ human_when(m.starts_at) }}</b> · {{ 'онлайн' if m.format == 'online' else 'в офісі' }}
+        {% if m.note %}<div class="small muted">{{ m.note }}</div>{% endif %}
+        <form method="post" action="/meetings/{{ m.id }}/cancel" class="inline">
+          <input type="hidden" name="csrf" value="{{ csrf }}">
+          <input type="hidden" name="back_to" value="/cases/{{ case.id }}#meeting">
+          <button class="small danger" data-confirm="Скасувати зустріч і повідомити клієнта?">Скасувати</button>
+        </form>
+      </div>
+    {% endfor %}
+    {% if offer_slots %}
+      <p class="small">Клієнту запропоновано: {% for x in offer_slots %}{{ human_when(x) }}{{ '; ' if not loop.last }}{% endfor %}. Чекаємо на вибір.</p>
+    {% endif %}
+    <form method="post" action="/cases/{{ case.id }}/meeting/offer" class="inline">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      {% if online_enabled %}
+      <select name="fmt"><option value="office">В офісі</option><option value="online">Онлайн</option></select>
+      {% endif %}
+      <button {{ 'class=primary' if not upcoming }}>{{ 'Запропонувати інший час' if upcoming or offer_slots else 'Запропонувати зустріч' }}</button>
+    </form>
+    <p class="small muted">Клієнт отримає в Telegram 3 вільні варіанти з робочих годин і календаря, обере кнопкою — і отримає адресу, мапу та нагадування.</p>
   </section>
   {% endif %}
 </div>

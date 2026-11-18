@@ -28,3 +28,9 @@ document.addEventListener("click", (e) => {
 
 // Дашборд оновлюється раз на хвилину
 if (location.pathname === "/") setTimeout(() => location.reload(), 60000);
+
+// Сторінка, де фонове завдання ще працює (Дослідник), оновлюється сама
+(function () {
+  const el = document.querySelector("[data-autoreload]");
+  if (el) setTimeout(() => location.reload(), parseInt(el.dataset.autoreload, 10) * 1000);
+})();

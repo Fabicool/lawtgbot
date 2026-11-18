@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Зустрічі</h1>
+{% if not calendar_configured %}
+  <div class="flash info small">Google Calendar не підключено — зустрічі ведуться лише в платформі, і асистент не бачить інших ваших подій.
+    Як підключити — у README, розділ «Google Calendar».</div>
+{% elif not calendar_connected %}
+  <div class="flash error small">Google Calendar налаштовано, але підключення не вдалося — перевірте файл ключа в .env.</div>
+{% endif %}
+{% for title, items in groups.items() %}
+  {% if items or title != 'Минулі / скасовані' %}
+  <section class="card">
+    <h2>{{ title }}</h2>
+    {% for m in items %}
+      <div class="meeting-row {{ 'muted' if m.status != 'scheduled' }}">
+        <b>{{ human_when(m.starts_at) }}</b>–{{ to_kyiv(m.ends_at).strftime('%H:%M') }}
+        {% if m.kind == 'block' %}
+          · <span class="badge">закрито для запису</span> {{ m.note }}
+        {% else %}
+          · {{ 'онлайн' if m.format == 'online' else 'в офісі' }}
+          · <a href="/cases/{{ m.case_id }}">#{{ m.case_id }} {{ m.case.client.full_name if m.case else '' }}</a>
+        {% endif %}
+        {% if m.status == 'cancelled' %}<span class="badge red">скасовано</span>{% elif m.status == 'done' %}<span class="badge">проведено</span>{% endif %}
+        {% if m.note and m.kind != 'block' %}<div class="small amber-text">{{ m.note }}</div>{% endif %}
+        {% if m.status == 'scheduled' %}
+        <form method="post" action="/meetings/{{ m.id }}/cancel" class="inline">
+          <input type="hidden" name="csrf" value="{{ csrf }}">
+          <button class="small danger" data-confirm="{{ 'Відкрити цей час для запису?' if m.kind == 'block' else 'Скасувати зустріч і повідомити клієнта?' }}">{{ 'Відкрити' if m.kind == 'block' else 'Скасувати' }}</button>
+        </form>
+        {% endif %}
+      </div>
+    {% else %}<p class="muted small">Немає.</p>{% endfor %}
+  </section>
+  {% endif %}
+{% endfor %}
+<section class="card">
+  <h2>Закрити час для запису</h2>
+  <form method="post" action="/meetings/block" class="inline">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <label class="small">Дата <input type="date" name="day" required></label>
+    <label class="small">З <input type="time" name="start" value="10:00" required></label>
+    <label class="small">До <input type="time" name="end" value="18:00" required></label>
+    <label class="small">Примітка <input name="note" placeholder="суд, відпустка…"></label>
+    <button>Закрити</button>
+  </form>
+</section>
+{% endblock %}

@@ -9,3 +9,5 @@ data/
 lawyer-2fa.png
 *.egg-info/
 build/
+google-key.json
+*-key.json

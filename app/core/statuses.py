@@ -13,6 +13,7 @@ class CaseStatus(StrEnum):
     PREPARING = "preparing"
     APPROVED = "approved"
     SENT = "sent"
+    MEETING = "meeting"
     INACTIVE = "inactive"
     CLOSED = "closed"
     DECLINED = "declined"
@@ -32,6 +33,7 @@ STATUS_LABELS: dict[CaseStatus, str] = {
     CaseStatus.PREPARING: "Готується відповідь",
     CaseStatus.APPROVED: "Затверджено",
     CaseStatus.SENT: "Консультацію надіслано",
+    CaseStatus.MEETING: "Зустріч призначено",
     CaseStatus.INACTIVE: "Неактивне",
     CaseStatus.CLOSED: "Закрито",
     CaseStatus.DECLINED: "Відмовлено",
@@ -48,6 +50,7 @@ DASHBOARD_COLUMNS: list[CaseStatus] = [
     CaseStatus.SURVEY,
     CaseStatus.DOCUMENTS,
     CaseStatus.SENT,
+    CaseStatus.MEETING,
 ]
 
 # Дозволені переходи. Адвокат може вручну закрити/відмовити з будь-якого статусу.
@@ -60,7 +63,8 @@ TRANSITIONS: dict[CaseStatus, set[CaseStatus]] = {
     CaseStatus.IN_REVIEW: {CaseStatus.PREPARING, CaseStatus.APPROVED},
     CaseStatus.PREPARING: {CaseStatus.APPROVED, CaseStatus.IN_REVIEW},
     CaseStatus.APPROVED: {CaseStatus.SENT},
-    CaseStatus.SENT: {CaseStatus.PREPARING, CaseStatus.IN_REVIEW},
+    CaseStatus.SENT: {CaseStatus.PREPARING, CaseStatus.IN_REVIEW, CaseStatus.MEETING},
+    CaseStatus.MEETING: {CaseStatus.SENT, CaseStatus.PREPARING, CaseStatus.IN_REVIEW},
     CaseStatus.INACTIVE: {CaseStatus.IN_REVIEW, CaseStatus.SURVEY},
     CaseStatus.CLOSED: {CaseStatus.IN_REVIEW},
     CaseStatus.DECLINED: set(),
@@ -80,6 +84,7 @@ OPEN_STATUSES = INTAKE_STATUSES | {
     CaseStatus.PREPARING,
     CaseStatus.APPROVED,
     CaseStatus.SENT,
+    CaseStatus.MEETING,
 }
 
 

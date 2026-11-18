@@ -17,8 +17,28 @@
     {% endfor %}
   </section>
   <section class="card">
+    <h2>ШІ-асистент</h2>
+    {% for key, label, kind in ai_fields %}
+      <label class="check"><input type="checkbox" name="{{ key }}" value="1" {{ 'checked' if values[key] == '1' }}> {{ label }}</label>
+    {% endfor %}
+  </section>
+  <section class="card">
+    <h2>Зустрічі</h2>
+    <p class="small muted">Google Calendar: {% if calendar_enabled %}<b>налаштовано</b>{% else %}не підключено — зустрічі ведуться лише в платформі (див. README){% endif %}.</p>
+    {% for key, label, kind in meeting_fields %}
+      <label>{{ label }} <input name="{{ key }}" value="{{ values[key] }}" {% if kind == 'number' %}type="number" min="0"{% endif %}></label>
+    {% endfor %}
+  </section>
+  <section class="card">
+    <h2>Нагадування клієнтам</h2>
+    <p class="small muted">Нагадування про зустріч надсилаються автоматично за 24 і за 2 години.</p>
+    {% for key, label, kind in reminder_fields %}
+      <label>{{ label }} <input name="{{ key }}" value="{{ values[key] }}" type="number" min="1"></label>
+    {% endfor %}
+  </section>
+  <section class="card">
     <h2>Тексти повідомлень бота</h2>
-    <p class="small muted">Підстановки: {lawyer_name}, {lawyer_phone}, {privacy_url}; у деяких текстах — {name}, {days}, {documents}, {filename}, {note}.</p>
+    <p class="small muted">Підстановки: {lawyer_name}, {lawyer_phone}, {privacy_url}; у деяких текстах — ті, що вказані в дужках у назві поля, а також {name}, {days}, {documents}, {filename}, {note}.</p>
     {% for key, label in template_labels.items() %}
       <label>{{ label }} <textarea name="tpl.{{ key }}" rows="{{ 6 if values['tpl.' ~ key]|length > 200 else 3 }}">{{ values['tpl.' ~ key] }}</textarea></label>
     {% endfor %}

@@ -15,15 +15,15 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm import selectinload
 
-from app.agents import analyst, intake_agent
+from app.agents import analyst, followup, intake_agent
 from app.config import get_settings
-from app.core import crypto, notify
+from app.core import crypto, meetings, notify, research_service
 from app.core.conflicts import Match, find_matches, normalize_name, normalize_phone
 from app.core.defaults import CATEGORIES, URGENT_OPTIONS
-from app.core.settings_store import document_list, get_int, survey_questions, template
+from app.core.settings_store import document_list, get_int, get_value, survey_questions, template
 from app.core.statuses import INTAKE_STATUSES, OPEN_STATUSES, CaseStatus, ConflictStatus
 from app.core.workflow import audit, set_status
-from app.db.models import Case, Client, Document, Party, utcnow
+from app.db.models import Case, Client, Document, Draft, Party, utcnow
 from app.messaging import hub
 from app.messaging.hub import Button, Keyboard
 
@@ -88,6 +88,9 @@ class IntakeFlow:
                     await session.rollback()
                     log.exception("Помилка обробки повідомлення від %s", ev.chat_id)
                     raise
+                # Дії, які мають бачити вже збережені дані (напр. запуск Дослідника у фоні).
+                for callback in session.info.pop("after_commit", []):
+                    await callback()
 
     # ---------- допоміжне ----------
 
@@ -108,6 +111,27 @@ class IntakeFlow:
             .limit(1)
         )
 
+    async def _reactivate(self, session: AsyncSession, client: Client) -> Case | None:
+        """Клієнт повернувся до «Неактивного» незавершеного звернення — продовжуємо його."""
+        case = await session.scalar(
+            select(Case)
+            .where(
+                Case.client_id == client.id,
+                Case.status == CaseStatus.INACTIVE,
+                Case.intake_step.notin_(["done", ""]),
+            )
+            .order_by(Case.id.desc())
+            .options(selectinload(Case.documents), selectinload(Case.messages))
+            .limit(1)
+        )
+        if case is None or (utcnow() - case.last_client_activity).days > 30:
+            return None
+        previous = CaseStatus(case.intake.get("status_before_inactive") or CaseStatus.SURVEY)
+        await set_status(session, case, previous, "bot", force=True)
+        case.intake = {**case.intake, "nudges": 0}
+        await audit(session, "bot", "case_reactivated", "case", case.id)
+        return case
+
     async def _daily_limit_reached(self, session: AsyncSession) -> bool:
         limit = await get_int(session, "daily_limit", 0)
         if limit <= 0:
@@ -123,12 +147,18 @@ class IntakeFlow:
     async def _handle(self, session: AsyncSession, ev: IncomingEvent) -> None:
         client = await self._get_client(session, ev)
         case = await self._open_case(session, client) if client else None
+        if case is None and client is not None:
+            case = await self._reactivate(session, client)
         text = ev.text.strip()
+
+        if case is not None and ev.callback.startswith("meet:"):
+            await self._meeting_choice(session, case, client, ev.callback)
+            return
 
         if text.startswith("/start") or case is None:
             if case is not None and case.status in INTAKE_STATUSES and case.handoff == "assistant":
                 await self._send(session, case, client, "Продовжимо з того місця, де зупинились.")
-                await self._repeat_step(session, case, client)
+                await self.repeat_step(session, case, client)
                 return
             if case is not None and (case.status in AWAITING_LAWYER or case.handoff == "lawyer"):
                 # Звернення вже в адвоката — не створюємо дубль, а нагадуємо про нього.
@@ -184,7 +214,7 @@ class IntakeFlow:
         await audit(session, "bot", "case_created", "case", case.id)
         await self._ask_consent(session, case, client)
 
-    async def _repeat_step(self, session: AsyncSession, case: Case, client: Client) -> None:
+    async def repeat_step(self, session: AsyncSession, case: Case, client: Client) -> None:
         step = case.intake_step
         if step == "consent":
             await self._ask_consent(session, case, client)
@@ -619,6 +649,26 @@ class IntakeFlow:
         tpl = "received_ack_complex" if case.is_complex else "received_ack"
         await self._send(session, case, client, await template(session, tpl, days=days), _kb(human_row()))
         await notify.notify_lawyer("in_review", case.id)
+        if await get_value(session, "auto_research") == "1":
+            session.info.setdefault("after_commit", []).append(
+                lambda: research_service.start(self.sm, case.id)
+            )
+
+    # ---------- зустріч ----------
+
+    async def _meeting_choice(self, session: AsyncSession, case: Case, client: Client, data: str) -> None:
+        choice = data.split(":", 1)[1]
+        if choice == "none":
+            hub.record_incoming(session, case, "Жоден час не підходить")
+            await meetings.decline_all(session, case, client)
+            return
+        if not choice.isdigit():
+            return
+        slots = (case.meeting_offer or {}).get("slots") or []
+        idx = int(choice)
+        if 0 <= idx < len(slots):
+            hub.record_incoming(session, case, meetings.short_when(datetime.fromisoformat(slots[idx])))
+        await meetings.book(session, case, client, idx)
 
     # ---------- передача адвокату ----------
 
@@ -632,6 +682,28 @@ class IntakeFlow:
     async def _forward_to_lawyer(
         self, session: AsyncSession, case: Case, client: Client, ev: IncomingEvent
     ) -> None:
+        if (
+            ev.text
+            and not ev.file
+            and case.handoff == "assistant"
+            and case.status in {CaseStatus.SENT, CaseStatus.MEETING}
+            and await get_value(session, "followup_answers") == "1"
+        ):
+            # Уточнення до консультації — асистент відповідає лише в межах затвердженого тексту.
+            consultation = await session.scalar(
+                select(Draft.text)
+                .where(Draft.case_id == case.id, Draft.state == "sent")
+                .order_by(Draft.id.desc())
+            )
+            hub.record_incoming(session, case, ev.text)
+            case.unread = True
+            reply = await followup.answer(consultation or "", ev.text)
+            if reply:
+                await self._send(session, case, client, reply + await template(session, "followup_footer"))
+                return
+            await self._send(session, case, client, await template(session, "followup_forward"))
+            await notify.notify_lawyer("client_message", case.id)
+            return
         if ev.file:
             await self._save_file(session, case, client, ev.file, reply=False)
         elif ev.text:

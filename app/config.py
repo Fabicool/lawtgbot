@@ -30,6 +30,10 @@ class Settings(BaseSettings):
     base_url: str = "http://localhost:8000"
     cookie_secure: bool = False  # True на VPS з HTTPS
 
+    # Google Calendar (необов'язково): сервісний акаунт + ID календаря «Прийом»
+    google_service_account_file: str = ""
+    google_calendar_id: str = ""
+
     # Email-сповіщення адвокату
     smtp_host: str = ""
     smtp_port: int = 587

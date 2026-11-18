@@ -19,12 +19,44 @@ router = APIRouter(dependencies=[Depends(current_lawyer)])
 GENERAL_FIELDS = [
     ("lawyer_name", "ПІБ адвоката (як підписувати повідомлення)", "input"),
     ("lawyer_phone", "Телефон для термінових звернень", "input"),
-    ("office_address", "Адреса офісу", "input"),
-    ("working_hours", "Робочі години", "input"),
     ("response_days", "Строк відповіді, робочих днів", "number"),
     ("response_days_complex", "Строк для складних справ, робочих днів", "number"),
     ("daily_limit", "Ліміт нових звернень на день (0 — без ліміту)", "number"),
     ("max_clarify_rounds", "Раундів уточнювальних питань ШІ (макс.)", "number"),
+    ("max_due_per_day", "Попереджати, якщо на один день припадає більше строків, ніж", "number"),
+]
+
+AI_FIELDS = [
+    ("auto_research", "Запускати Дослідника автоматично після опитування", "toggle"),
+    (
+        "followup_answers",
+        "Після консультації асистент відповідає на уточнення лише в межах її тексту",
+        "toggle",
+    ),
+]
+
+MEETING_FIELDS = [
+    ("office_address", "Адреса офісу", "input"),
+    ("office_map_url", "Посилання на мапу (необов'язково — інакше Google Maps за адресою)", "input"),
+    (
+        "online_meeting_url",
+        "Постійне посилання для онлайн-зустрічей (Zoom / Meet; порожньо — лише офіс)",
+        "input",
+    ),
+    ("working_hours", "Робочі години (текстом, для клієнтів)", "input"),
+    ("meeting_days", "Дні прийому (1 — пн … 7 — нд, через кому)", "input"),
+    ("meeting_start", "Початок прийому (ГГ:ХХ)", "input"),
+    ("meeting_end", "Кінець прийому (ГГ:ХХ)", "input"),
+    ("meeting_duration", "Тривалість зустрічі, хв", "number"),
+    ("meeting_notice_hours", "Найраніше — через стільки годин від пропозиції", "number"),
+    ("meeting_horizon_days", "Пропонувати час на стільки днів уперед", "number"),
+    ("meeting_bring", "Що взяти з собою", "input"),
+]
+
+REMINDER_FIELDS = [
+    ("nudge_days_1", "Перше нагадування клієнту, який не завершив опитування, через (днів)", "number"),
+    ("nudge_days_2", "Друге нагадування через (днів)", "number"),
+    ("inactive_after_days", "Статус «Неактивне» через (днів без відповіді)", "number"),
 ]
 
 TEMPLATE_LABELS = {
@@ -46,11 +78,24 @@ TEMPLATE_LABELS = {
     "daily_limit": "Ліміт звернень на день",
     "decline": "Ввічлива відмова",
     "consultation_footer": "Підпис під консультацією",
+    "followup_forward": "Уточнення поза консультацією — передано адвокату",
+    "followup_footer": "Примітка під відповіддю асистента після консультації",
+    "nudge_1": "Перше нагадування клієнту, що зник",
+    "nudge_2": "Друге нагадування клієнту, що зник",
+    "deadline_moved": "Повідомлення про перенесення строку ({date})",
+    "meeting_offer": "Пропозиція зустрічі ({format_note})",
+    "meeting_confirmed": "Зустріч призначено — офіс ({when}, {address}, {map_url}, {bring})",
+    "meeting_confirmed_online": "Зустріч призначено — онлайн ({when}, {online_url}, {bring})",
+    "meeting_reminder_24": "Нагадування за 24 години ({when}, {where})",
+    "meeting_reminder_2": "Нагадування за 2 години ({when}, {where})",
+    "meeting_cancelled": "Зустріч скасовано ({when})",
+    "meeting_none_fit": "Клієнту не підійшов час",
+    "meeting_slot_taken": "Обраний час уже зайнятий",
 }
 
 
 def all_keys() -> list[str]:
-    keys = [k for k, _, _ in GENERAL_FIELDS]
+    keys = [k for k, _, _ in GENERAL_FIELDS + AI_FIELDS + MEETING_FIELDS + REMINDER_FIELDS]
     keys += [f"tpl.{k}" for k in TEMPLATE_LABELS]
     keys.append("base_questions")
     keys += [f"questions.{c}" for c in defaults.CATEGORIES]
@@ -67,6 +112,10 @@ async def settings_page(request: Request, session: AsyncSession = Depends(get_se
         "settings.html",
         values=values,
         general=GENERAL_FIELDS,
+        ai_fields=AI_FIELDS,
+        meeting_fields=MEETING_FIELDS,
+        reminder_fields=REMINDER_FIELDS,
+        calendar_enabled=bool(get_settings().google_calendar_id),
         template_labels=TEMPLATE_LABELS,
         log=log,
         ai_enabled=get_settings().ai_enabled,
@@ -82,10 +131,14 @@ async def save_settings(
 ):
     form = await request.form()
     changed = 0
+    toggles = {k for k, _, kind in AI_FIELDS if kind == "toggle"}
     for key in all_keys():
-        if key not in form:
+        if key in toggles:
+            value = "1" if form.get(key) else "0"
+        elif key not in form:
             continue
-        value = str(form[key]).replace("\r\n", "\n").strip()
+        else:
+            value = str(form[key]).replace("\r\n", "\n").strip()
         if value == (await get_value(session, key)).strip():
             continue
         if value == default_value(key).strip():

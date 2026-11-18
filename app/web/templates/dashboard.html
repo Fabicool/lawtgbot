@@ -7,6 +7,13 @@
   <div class="stat"><b>{{ stats.avg_hours if stats.avg_hours is not none else '—' }}{% if stats.avg_hours is not none %} год{% endif %}</b><span>середній час до відповіді адвоката</span></div>
   <div class="stat actions"><a class="button" href="/export/cases.xlsx">⬇ Звернення в Excel</a></div>
 </div>
+{% if overload %}
+<div class="flash workload">⚠ Навантаження: {% for day, n in overload %}на {{ day }} — {{ n }} строків{{ '; ' if not loop.last }}{% endfor %}
+  (більше ніж {{ limit }}). Можливо, варто перенести строк і повідомити клієнта.</div>
+{% endif %}
+{% if today_meetings %}
+<div class="flash info">📅 Найближчі 24 години: {% for m in today_meetings %}<a href="/cases/{{ m.case_id }}">{{ human_when(m.starts_at) }}</a>{{ '; ' if not loop.last }}{% endfor %}</div>
+{% endif %}
 {% if urgent %}
 <section class="urgent-strip">
   <h2>Термінові</h2>

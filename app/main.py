@@ -48,17 +48,26 @@ async def run() -> None:
     else:
         log.warning("TELEGRAM_BOT_TOKEN не задано — працює лише веб-платформа")
     if not s.ai_enabled:
-        log.warning("ANTHROPIC_API_KEY не задано — бот працює за анкетою без ШІ")
+        log.warning("ANTHROPIC_API_KEY не задано — бот працює за анкетою без ШІ, Дослідник вимкнений")
+    if s.google_calendar_id:
+        from app.integrations.google_calendar import get_calendar
+
+        log.info("Google Calendar: %s", "підключено" if get_calendar() else "ПОМИЛКА підключення (див. вище)")
 
     app = create_app(flow)
     server = uvicorn.Server(uvicorn.Config(app, host=s.web_host, port=s.web_port, log_level="info"))
     log.info("Платформа: %s", s.base_url)
 
-    tasks = [asyncio.create_task(server.serve())]
+    from app.core import scheduler
+
+    tasks = [asyncio.create_task(server.serve()), asyncio.create_task(scheduler.run_forever(sm, flow))]
     if dp is not None:
         tasks.append(asyncio.create_task(dp.start_polling(bot, handle_signals=False)))
     try:
-        done, _ = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+        done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+        for t in pending:
+            if t is not tasks[0]:
+                t.cancel()
         for t in done:
             t.result()
     finally:

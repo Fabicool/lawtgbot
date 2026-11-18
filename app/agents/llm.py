@@ -49,7 +49,7 @@ def wrap_client_data(text: str) -> str:
     return f"<client_data>\n{text}\n</client_data>"
 
 
-def _supports_server_fallback(model: str) -> bool:
+def supports_server_fallback(model: str) -> bool:
     return model in {"claude-opus-5-5", "claude-opus-5", "claude-fable-5-1", "claude-sonnet-5-5"}
 
 
@@ -74,7 +74,7 @@ async def parse(
         "output_config": {"effort": effort},
     }
     try:
-        if _supports_server_fallback(model):
+        if supports_server_fallback(model):
             # Якщо модель відмовить через фільтри безпеки, сервер повторить запит на іншій моделі.
             response = await client().beta.messages.parse(
                 betas=["server-side-fallback-2026-07-01"], fallbacks="default", **kwargs

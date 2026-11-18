@@ -10,7 +10,7 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from app.config import get_settings
 from app.web.auth import LoginRequired
-from app.web.routes import auth_routes, cases, clients, settings_routes
+from app.web.routes import auth_routes, cases, clients, meetings_routes, settings_routes
 from app.web.templating import render
 
 
@@ -50,5 +50,6 @@ def create_app(flow=None) -> FastAPI:
     app.include_router(auth_routes.router)
     app.include_router(cases.router)
     app.include_router(clients.router)
+    app.include_router(meetings_routes.router)
     app.include_router(settings_routes.router)
     return app
